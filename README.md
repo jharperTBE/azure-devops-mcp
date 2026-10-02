@@ -76,6 +76,8 @@ See the [Available Tools](https://learn.microsoft.com/en-us/azure/devops/mcp-ser
 
 For the complete list of local tools, see [TOOLSET.md](./docs/TOOLSET.md).
 
+For this fork's **read-only pull request review on on-premises Azure DevOps Server**, including first-time Windows and GitHub Copilot CLI installation, see [Install from this fork on Windows](./docs/ONPREM.md#install-from-this-fork-on-windows). The published `@azure-devops/mcp` npm package and the hosted remote server do not include this fork's on-premises mode.
+
 ## Local MCP Server Installation (Optional)
 
 > [!IMPORTANT]

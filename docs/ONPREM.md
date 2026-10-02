@@ -5,6 +5,89 @@ The local MCP server targets Azure DevOps Services by default. Passing `--server
 > [!NOTE]
 > In this mode the server never calls cloud-only endpoints such as tenant discovery or Microsoft Entra sign-in. It loads only the tools listed below. Write operations are not available. Cloud behavior does not change when you omit `--server-url`.
 
+## Install from this fork on Windows
+
+These instructions use [jharperTBE/azure-devops-mcp](https://github.com/jharperTBE/azure-devops-mcp), **not** the `@azure-devops/mcp` npm package. That package does not include this fork's on-premises changes. Run commands in PowerShell. You need network access to your Azure DevOps Server (including VPN, if required), a Windows account with access to the desired project collection, and a GitHub account entitled to use Copilot CLI.
+
+1. Install [Git for Windows](https://git-scm.com/download/win), [Node.js 22 or later](https://nodejs.org/en/download), and Windows PowerShell (`powershell.exe`, included with Windows). Open a **new** PowerShell window and check:
+
+   ```powershell
+   git --version
+   node --version
+   npm --version
+   Get-Command powershell.exe
+   ```
+
+   If a command is not found, reopen the terminal after installation and confirm the installer's PATH setting. Node.js 22+ also meets the [Copilot CLI installation requirement](https://docs.github.com/en/copilot/get-started/cli-quickstart).
+
+2. Clone and build this fork. Choose a folder you can keep; the Copilot configuration will point to its built files:
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:USERPROFILE\source\repos" | Out-Null
+   Set-Location "$env:USERPROFILE\source\repos"
+   git clone https://github.com/jharperTBE/azure-devops-mcp.git
+   Set-Location .\azure-devops-mcp
+   npm ci
+   npm run build
+   (Resolve-Path .\dist\index.js).Path
+   ```
+
+   The final command prints the absolute path to use in the configuration. Keep the clone and its `node_modules` directory; the built server needs its installed dependencies at runtime. Do not use `npx @azure-devops/mcp` to launch this fork.
+
+3. Install [GitHub Copilot CLI](https://docs.github.com/en/copilot/get-started/cli-quickstart):
+
+   ```powershell
+   npm install -g @github/copilot
+   copilot
+   ```
+
+   In Copilot CLI, run `/login` and follow the GitHub sign-in prompts. This signs you in to **GitHub**, not Azure DevOps. Exit the CLI before editing its MCP configuration.
+
+4. Edit `%USERPROFILE%\.copilot\mcp-config.json` (in PowerShell, `$env:USERPROFILE\.copilot\mcp-config.json`). Create the `.copilot` folder and file if needed. Add this entry under `mcpServers`, replacing `YOUR_USERNAME`, `COLLECTION_NAME`, and `https://YOUR_SERVER_ROOT`:
+
+   ```json
+   {
+     "mcpServers": {
+       "ado-onprem": {
+         "type": "local",
+         "command": "node",
+         "args": ["C:\\Users\\YOUR_USERNAME\\source\\repos\\azure-devops-mcp\\dist\\index.js", "COLLECTION_NAME", "--server-url", "https://YOUR_SERVER_ROOT", "-a", "windows"],
+         "tools": ["*"]
+       }
+     }
+   }
+   ```
+
+   Use the exact path printed in step 2 and escape each `\` as `\\` in JSON. The server root **excludes** the collection (for example, `https://ado.example.com` with `DefaultCollection`, or `https://ado.example.com/tfs` with `DefaultCollection`). The resulting collection URL is `<server-root>/<collection>`. If `mcp-config.json` already exists, **add only the `ado-onprem` entry to its existing `mcpServers` object**; do not replace other servers. Use a different entry name for each collection you want to connect to. Do not put passwords or tokens in this file.
+
+5. Start Copilot CLI again (`copilot`), run `/mcp`, and confirm `ado-onprem` is connected and exposes five `onprem_*` tools. Try: `Use ado-onprem to list projects in this collection.` Then, with a project and repository name, try: `Use ado-onprem to list active pull requests in project PROJECT and repository REPOSITORY.` For a known PR: `Review pull request 123 using ado-onprem. Read its metadata, changed files and diffs, linked work items, and discussion threads; summarize outstanding review concerns. Do not modify anything.`
+
+The Windows transport runs as **the account that launches Copilot CLI** and uses Windows integrated authentication (Negotiate/NTLM); no Azure DevOps password is requested or saved. If the collection name is unknown, open `<server-root>/_apis/projectCollections?api-version=5.0` in a browser while connected to the same network and signed in to Windows. Ask your Azure DevOps administrator if you cannot access that endpoint or the collection.
+
+### Update this installation
+
+When this fork changes, stop Copilot CLI, then run these commands from the clone and restart the CLI:
+
+```powershell
+Set-Location "$env:USERPROFILE\source\repos\azure-devops-mcp"
+git pull --ff-only
+npm ci
+npm run build
+```
+
+If you cloned to a different location, use that path instead. `npm ci` uses the lockfile to install the versioned dependencies.
+
+### Troubleshooting
+
+| Symptom                            | Check                                                                                                                                                                   |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ado-onprem` is absent from `/mcp` | Confirm the JSON syntax, the `mcpServers` key, and the absolute path to `dist\index.js`. Restart Copilot CLI after editing the file.                                    |
+| `node` or `git` is not recognized  | Install the prerequisite and open a new PowerShell window so PATH is refreshed.                                                                                         |
+| Connection fails or returns 404    | Ensure VPN/network access, the exact server root (which may include `/tfs`), and the collection name. Do not include the collection twice.                              |
+| 401/403 or no projects             | Run Copilot CLI under a Windows account authorized for that collection. Verify access in a browser; check with the server administrator if integrated auth is disabled. |
+| PowerShell worker fails            | Confirm `powershell.exe` is available. PowerShell Constrained Language Mode and application-control policies can block the worker; contact your administrator.          |
+| Only cloud tools appear            | Launch this fork's built `dist\index.js`, not the published npm package, and pass `--server-url`.                                                                       |
+
 ## Usage
 
 ```bash
@@ -19,7 +102,7 @@ node dist/index.js <collection> --server-url <server-root> [-a windows|pat] [--a
 | `--api-version`        | REST API version sent with every request. Defaults to `5.0` (Azure DevOps Server 2019). Newer servers accept higher versions such as `7.0`.                                 |
 | `-d, --domains`        | Must include `repositories` (the default `all` does). Other domains are ignored and a warning is logged.                                                                    |
 
-The collection URL is `<server-root>/<collection>`. To list the collections your account can see, open `<server-root>/_apis/projectCollections?api-version=5.0` in a browser.
+The collection URL is `<server-root>/<collection>`.
 
 ## Authentication
 
@@ -51,21 +134,7 @@ Diffs are computed locally from the two file versions, because Azure DevOps Serv
 
 ## GitHub Copilot CLI
 
-Build from source as described in [Run from Source](./GETTINGSTARTED.md#run-from-source). This mode is not in published npm releases until it is merged and released. Then add the server to `~/.copilot/mcp-config.json`:
-
-```json
-{
-  "mcpServers": {
-    "ado-server": {
-      "command": "node",
-      "args": ["C:\\path\\to\\azure-devops-mcp\\dist\\index.js", "{Collection}", "--server-url", "https://{server}", "-a", "windows"],
-      "tools": ["*"]
-    }
-  }
-}
-```
-
-Example prompt: `Review pull request 123 in {Project}: summarize the change, inspect each changed file's diff, and account for open review threads.`
+Follow [Install from this fork on Windows](#install-from-this-fork-on-windows) for the complete download, build, authentication, and Copilot CLI setup. The `mcp-config.json` example above uses Windows authentication without storing credentials.
 
 ## Limitations
 
